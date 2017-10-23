@@ -1,3 +1,4 @@
+import numpy as np
 import matplotlib.pyplot as plt
 from eulerangles import euler2mat
 from mpl_toolkits.mplot3d import axes3d, Axes3D #<-- Note the capitalization!
@@ -12,13 +13,17 @@ def pyplot_draw_point_cloud(points, output_filename):
     """ points is a Nx3 numpy array """
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(points[:,0], points[:,1], points[:,2])
+    #ax.scatter(points[:,0], points[:,1], points[:,2])
+    ax.scatter(points[:,1], points[:,0], points[:,2])
+
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.set_zlabel('z')
-    plt.savefig("plt.jpg")
-    plt.show()
+    # #plt.savefig("image.png",bbox_inches='tight',dpi=100)
+    # plt.show()
 
+    ax.view_init(30, 70)
+    plt.show()
 
 def draw_point_cloud(input_points, canvasSize=500, space=200, diameter=25,
                      xrot=0, yrot=0, zrot=0, switch_xyz=[0,1,2], normalize=True):
@@ -44,6 +49,7 @@ def draw_point_cloud(input_points, canvasSize=500, space=200, diameter=25,
         furthest_distance = np.max(np.sqrt(np.sum(abs(points)**2,axis=-1)))
         points /= furthest_distance
 
+
     # Pre-compute the Gaussian disk
     radius = (diameter-1)/2.0
     disk = np.zeros((diameter, diameter))
@@ -62,6 +68,8 @@ def draw_point_cloud(input_points, canvasSize=500, space=200, diameter=25,
     points[:, 2] = (points[:, 2] - np.min(points[:, 2])) / (np.max(points[:, 2] - np.min(points[:, 2])))
     max_depth = np.max(points[:, 2])
 
+    pyplot_draw_point_cloud(points,"")
+
     for i in range(points.shape[0]):
         j = points.shape[0] - i - 1
         x = points[j, 0]
@@ -77,6 +85,7 @@ def draw_point_cloud(input_points, canvasSize=500, space=200, diameter=25,
         image[px, py] = image[px, py] * 0.7 + dv * (max_depth - points[j, 2]) * 0.3
 
     image = image / np.max(image)
+
     return image
 
 def point_cloud_three_views(points):
@@ -92,10 +101,9 @@ def point_cloud_three_views(points):
     image_large = np.concatenate([img1, img2, img3], 1)
     return image_large
 
-def point_cloud_three_views_demo(output_name):
+def point_cloud_three_views_demo(points, name):
     """ Demo for draw_point_cloud function """
-    points = data[index]
+    #points = data[index]
     im_array = point_cloud_three_views(points)
     img = Image.fromarray(np.uint8(im_array*255.0))
-    img.save(output_name+'.jpg')
-
+    img.save(name+'.jpg')
