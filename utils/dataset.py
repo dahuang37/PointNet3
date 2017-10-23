@@ -1,13 +1,13 @@
 from __future__ import print_function
-import torch.utils.data as data
+#import torch.utils.data as data
 from PIL import Image
 import os
 import sys
 import errno
-import torch
+#import torch
 import numpy as np
-import progressbar
-import torchvision.transforms as transforms
+#import progressbar
+#import torchvision.transforms as transforms
 import argparse
 import h5py
 import json
