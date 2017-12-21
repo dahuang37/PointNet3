@@ -1,20 +1,18 @@
 from __future__ import print_function, division
 import os
+import numpy as np
+import argparse
+import h5py
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
-
-import numpy as np
-
 from torch.utils.data import Dataset, DataLoader
 import torchvision
 from torchvision import transforms, utils
 
-import argparse
-import h5py
-import json
 
 TRAIN_FILE_LIST = "data/modelnet40_ply_hdf5_2048/train_files.txt"
 TRAIN_FILE_ID_LIST = "data/modelnet40_ply_hdf5_2048/train_files_id.txt"
@@ -23,7 +21,7 @@ TEST_FILE_ID_LIST = "data/modelnet40_ply_hdf5_2048/test_files_id.txt"
 SHAPE_LIST = "data/modelnet40_ply_hdf5_2048/shape_names.txt"
 
 class ModelNetDataset(Dataset):
-    def __init__(self, root, train=True, npoints=2048, mesh=False):
+    def __init__(self, root, train=True, transform=None, npoints=2048, mesh=False):
         """
         Args:
             root (string): Directory of data, default = data/modelnet40_ply_hdf5_2048
@@ -67,12 +65,12 @@ class ModelNetDataset(Dataset):
         
         h5_file = h5py.File(h5_list[0])
         self.npoints = npoints
+        self.transform = transform
         self.mesh = mesh
         self.data = h5_file['data'][:,0:npoints,:]
         self.labels = h5_file['label']
         self.length = len(self.data)
         self.mesh_paths = load_mesh_file(mesh_list[0])
-        print(len(self.mesh_paths))
         
         for i in range(1, len(h5_list)):
             h5_file = h5py.File(h5_list[i])
@@ -85,10 +83,17 @@ class ModelNetDataset(Dataset):
             self.mesh_paths += mesh_path
             
     def __getitem__(self, index):
+        data = self.data[index]
+        labels = self.labels[index]
+        mesh_paths = self.mesh_paths[index]
+
+        if self.transform is not None:
+            data = self.transform(data)
+
         if self.mesh:
-            return self.data[index], self.labels[index], self.mesh_paths[index]
+            return data, labels, mesh_paths
         else:
-            return self.data[index], self.labels[index]
+            return data, labels
     
     def __len__(self):
         return self.length
