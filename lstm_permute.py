@@ -24,20 +24,21 @@ parser.add_argument('--batchSize', type=int, default=32, help='input batch size'
 parser.add_argument('--num_points', type=int, default=2048, help='input batch size')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
 parser.add_argument('--nepoch', type=int, default=100, help='number of epochs to train for')
-parser.add_argument('--outf', type=str, default='pytorch_logs',  help='output folder')
+parser.add_argument('--outf', type=str, default='logs',  help='output folder')
 parser.add_argument('--model', type=str, default = '',  help='model path')
 parser.add_argument('--learning_rate', type=float, default='0.01', help='learning rate')
 
 opt = parser.parse_args()
 print (opt)
 
-def dumm_transoform(data):
+def permute_transoform(data):
+    print("transform!!")
     permutations = torch.randperm(2048)
     data_cat = data[permutations]
     
     return data_cat
 
-transform = transforms.Compose([transforms.Lambda(lambda x:dumm_transoform(x)),])
+transform = transforms.Compose([transforms.Lambda(lambda x:permute_transoform(x)),])
 # create folder for savings
 save_path = datetime.now().strftime('%Y-%m-%d %H:%M')
 save_path = opt.outf + "/" + save_path
