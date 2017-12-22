@@ -32,7 +32,6 @@ opt = parser.parse_args()
 print (opt)
 
 def permute_transoform(data):
-    print("transform!!")
     permutations = torch.randperm(2048)
     data_cat = data[permutations]
     
