@@ -12,6 +12,5 @@ scipy==1.0.0
 six==1.11.0
 tensorflow==1.4.1
 tensorflow-tensorboard==0.4.0rc3
-torch==0.3.0.post4
 torchvision==0.2.0
 Werkzeug==0.13
