@@ -48,29 +48,33 @@ class ModelNetDataset(Dataset):
                 folder = 'train'
             f = [os.path.join("data/ModelNet40",a[i][0], folder,a[i][1]+'.off')  for i in range(len(a))]
             return f
-        
+        self.mesh = mesh
+        if mesh:
+            if train:
+                mesh_train_txt = os.path.join(root, "train_files_id.txt")
+                mesh_list = [line.rstrip() for line in open(mesh_train_txt)]
+            else:
+                mesh_test_txt = os.path.join(root, "test_files_id.txt")
+                mesh_list = [line.rstrip() for line in open(mesh_test_txt)]
+            self.mesh_paths = load_mesh_file(mesh_list[0])
+
+
         train_txt = os.path.join(root, "train_files.txt")
-        mesh_train_txt = os.path.join(root, "train_files_id.txt")
         test_txt = os.path.join(root, "test_files.txt")
-        mesh_test_txt = os.path.join(root, "test_files_id.txt")
         label_names_txt = os.path.join(root, "shape_names.txt")
         
         label_names = [line.rstrip() for line in open(label_names_txt)]
         if train:
             h5_list = [line.rstrip() for line in open(train_txt)]
-            mesh_list = [line.rstrip() for line in open(mesh_train_txt)]
         else:
             h5_list = [line.rstrip() for line in open(test_txt)]
-            mesh_list = [line.rstrip() for line in open(mesh_test_txt)]
         
         h5_file = h5py.File(h5_list[0])
         self.npoints = npoints
         self.transform = transform
-        self.mesh = mesh
         self.data = h5_file['data'][:,0:npoints,:]
         self.labels = h5_file['label']
         self.length = len(self.data)
-        self.mesh_paths = load_mesh_file(mesh_list[0])
         
         for i in range(1, len(h5_list)):
             h5_file = h5py.File(h5_list[i])
@@ -79,18 +83,19 @@ class ModelNetDataset(Dataset):
             self.data = np.concatenate((self.data, datum), axis=0)
             self.labels = np.concatenate((self.labels, label), axis=0)
             self.length += len(datum)
-            mesh_path = load_mesh_file(mesh_list[i])
-            self.mesh_paths += mesh_path
+            if mesh:
+                mesh_path = load_mesh_file(mesh_list[i])
+                self.mesh_paths += mesh_path
             
     def __getitem__(self, index):
         data = self.data[index]
         labels = self.labels[index]
-        mesh_paths = self.mesh_paths[index]
 
         if self.transform is not None:
             data = self.transform(data)
 
         if self.mesh:
+            mesh_paths = self.mesh_paths[index]
             return data, labels, mesh_paths
         else:
             return data, labels
