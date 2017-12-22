@@ -1,6 +1,8 @@
 # PointNet3
 
 ## Set up
+virtualenv -p python3 env_name
+
 python setup.py
 
 ## Training
