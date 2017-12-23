@@ -95,9 +95,9 @@ for epoch in range(opt.nepoch):
         loss.backward()
 
         # preventing nan 
-        torch.nn.utils.clip_grad_norm(model.parameters(), 0.25)
-        for p in model.parameters():
-            p.data.add_(-opt.learning_rate, p.grad.data)
+        # torch.nn.utils.clip_grad_norm(model.parameters(), 0.25)
+        # for p in model.parameters():
+        #     p.data.add_(-opt.learning_rate, p.grad.data)
             
         optimizer.step()
         
