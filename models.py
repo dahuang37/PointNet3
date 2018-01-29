@@ -15,8 +15,8 @@ class LogisticRegression(nn.Module):
         self.linear = nn.Linear(input_size, num_classes)
 
     def forward(self, x):
-        out = self.linear(x)
-        out = F.dropout(out, training=self.training)
+        #print(x.size())
+        out = self.linear(x.view(-1, 2048*3))
         return out
 
 class STN(nn.Module):
@@ -83,8 +83,9 @@ class LSTM(nn.Module):
         self.bn2 = nn.BatchNorm1d(128)
         self.conv3 = torch.nn.Conv1d(128, 1024, 1)
         self.bn3 = nn.BatchNorm1d(1024)
-        self.rnn = nn.LSTM(input_size=1024, hidden_size=128, num_layers=1, batch_first=True)
-        self.out = nn.Linear(128, 40)
+        self.rnn = nn.LSTM(input_size=1024, hidden_size=256, num_layers=2, batch_first=True)
+        self.out1= nn.Linear(256, 128)
+        self.out2 = nn.Linear(128, 40)
 
     def forward(self, x):
         x = x.transpose(2,1)
@@ -94,7 +95,8 @@ class LSTM(nn.Module):
         x = x.transpose(2,1)
         self.rnn.flatten_parameters()
         r_out, (h_n, h_c) = self.rnn(x, None)
-        out = self.out(r_out[:, -1, :])
+        out = self.out1(r_out[:, -1, :])
+        out = self.out2(out)
         return out
 
 class LSTM_dist(nn.Module):

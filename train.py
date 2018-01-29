@@ -32,11 +32,12 @@ parser.add_argument('--workers', type=int, help='number of data loading workers'
 parser.add_argument('--outf', type=str, default='logs',  help='output folder')
 parser.add_argument('--path', type=str, default = '',  help='model path')
 parser.add_argument('--debug', type=int, default = 0,  help='debug mode, not creating saved path')
+parser.add_argument('--random_input', type=int, default = 0,  help='if 1, input will be randomized for training')
 
 opt = parser.parse_args()
 print(opt)
 
-# create folder for savings
+# create logger and folder for savings
 if(opt.debug == 0):
     save_path = datetime.now().strftime('%Y-%m-%d %H:%M')
     save_path = opt.outf + "/" + opt.model + "/" + save_path
@@ -73,14 +74,17 @@ use_cuda = torch.cuda.is_available()
 sort_input = True if opt.sort == 1 else False
 distance_input = True if opt.distance == 1 else False
 
-# load transformations 
-#train_transform = transforms.Compose([Rotate_point_cloud(), Jitter_point_cloud()]) # add random later
-#test_transform = transforms.Compose([Rotate_point_cloud(), Jitter_point_cloud()])
+# load transformations
+if opt.random_input == 0:
+    train_transform = transforms.Compose([Rotate_point_cloud(), Jitter_point_cloud()]) # add random later
+else:
+    train_transform = transforms.Compose([Random_permute(opt.num_points), Rotate_point_cloud(), Jitter_point_cloud()])
+test_transform = transforms.Compose([Rotate_point_cloud(), Jitter_point_cloud()])
 # Load dataset / data loader
 train_dataset = ModelNetDataset(root, 
                         train=True, 
                         sort=sort_input,
-                        #transform=train_transform,
+                        transform=train_transform,
                         distance=distance_input)
 train_loader = DataLoader(train_dataset, 
                         batch_size=opt.batchSize,
@@ -90,7 +94,7 @@ train_loader = DataLoader(train_dataset,
 test_dataset = ModelNetDataset(root, 
                         train=False, 
                         sort=sort_input, 
-                        #transform=test_transform,
+                        transform=test_transform,
                         distance=distance_input)
 test_loader = DataLoader(test_dataset, 
                         batch_size=opt.batchSize,
@@ -107,6 +111,8 @@ elif opt.model == 'lstm_dist':
     model = LSTM_dist(input_dim=3)
 elif opt.model == 'test':
     model = RNN_test()
+elif opt.model == "logit":
+    model = LogisticRegression(2048*3, 40)
 
 # load speicified pre-trained model
 if opt.path != '':
@@ -127,6 +133,15 @@ best_model_wts = model.state_dict()
 best_acc = 0.0
 best_epoch = 0
 
+# early stopping 
+'''
+monitor on val loss
+if stop improving from the past 10 epoch, then stop
+'''
+patience = 10
+wait = 0
+current_best = np.inf
+stop_training = False
 
 for epoch in range(opt.nepoch):
 
@@ -223,6 +238,18 @@ for epoch in range(opt.nepoch):
         best_model_wts = model.state_dict()
         best_epoch = epoch
 
+    # early stopping
+    if current_best > test_loss:
+        current_best = test_loss
+        wait = 0
+    else:
+        wait += 1
+        if wait >= patience:
+            stop_training = True
+
+    if stop_training:
+        break
+
 
 # saves training info
 time_elapsed = time.time() - since
@@ -233,12 +260,13 @@ print(print_time)
 print('Best val Acc: {:2f}'.format(100.*best_acc))
 
 if(opt.debug == 0):
+    # saving the model and training info
     torch.save(best_model_wts, '%s/model.pth' % (save_path))
     with open(save_path+'/result.txt', 'w') as file:
+        if stop_training:
+            print_stop_training = "Stop early at " + str(epoch) + " \n"
+            file.write(print_stop_training)
         print_best_accuracy = "Best Accuracy: " + str(100.*best_acc) + " at " + str(best_epoch) +  "th epoch \n"
-        # if early stopped print stopped accuracy 
-        # if early_stop == 1:
-        #    early_sentence = ...
         file.write(print_best_accuracy)
         file.write(print_time)
         file.close()

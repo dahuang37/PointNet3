@@ -12,6 +12,8 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
 import torchvision
 from torchvision import transforms, utils
+from utils import Random_permute, Rotate_point_cloud, Jitter_point_cloud
+
 
 
 TRAIN_FILE_LIST = "data/modelnet40_ply_hdf5_2048/train_files.txt"
@@ -71,13 +73,14 @@ class ModelNetDataset(Dataset):
 
         h5_file = h5py.File(h5_list[0])
         self.npoints = npoints
-        self.transform = transform
+        self.train = train
         self.data = h5_file['data'][:,0:npoints,:]
         self.labels = h5_file['label']
         self.length = len(self.data)
         self.sort = sort
         self.distance = distance
 
+        # extract the data from files
         for i in range(1, len(h5_list)):
             h5_file = h5py.File(h5_list[i])
             datum = h5_file['data'][:,0:npoints,:]
@@ -89,7 +92,20 @@ class ModelNetDataset(Dataset):
                 mesh_path = load_mesh_file(mesh_list[i])
                 self.mesh_paths += mesh_path
                 
-        self.new_data = np.zeros((self.data.shape[0],self.data.shape[1],6), dtype=np.float32)
+        
+        # # trasform
+        # if self.random_input:
+        #     train_transform = transforms.Compose([Random_permute(self.npoints), Rotate_point_cloud(), Jitter_point_cloud()]) # add random later
+        # else:
+        #     train_transform = transforms.Compose([Rotate_point_cloud(), Jitter_point_cloud()]) # add random later
+        
+        # test_transform = transforms.Compose([Rotate_point_cloud(), Jitter_point_cloud()])
+
+    
+        self.transform = transform
+        
+        # self.transform = test_transform
+
         if self.sort:
             # go through all the examples
             # sorting
@@ -97,14 +113,16 @@ class ModelNetDataset(Dataset):
                 ind = np.lexsort(np.transpose(self.data[i]))
                 self.data[i] = self.data[i,ind]
 
+        self.new_data = np.zeros((self.data.shape[0],self.data.shape[1],6), dtype=np.float32)
         if self.distance:
-            pass
-            #for num_ex in range(self.data.shape[0]):
-            #    self.new_data[i,:,:3] = self.data[i]
-            #    for j in range(self.data.shape[1]-1):
-            #        self.new_data[num_ex,j,3] = self.data[num_ex,j+1,0] - self.data[num_ex,j,0]
-            #        self.new_data[num_ex,j,4] = self.data[num_ex,j+1,1] - self.data[num_ex,j,1]
-            #        self.new_data[num_ex,j,5] = self.data[num_ex,j+1,2] - self.data[num_ex,j,2]
+            # to be reviewed
+            for num_ex in range(self.data.shape[0]):
+               self.new_data[i,:,:3] = self.data[i]
+               for j in range(self.data.shape[1]-1):
+                   self.new_data[num_ex,j,3] = self.data[num_ex,j+1,0] - self.data[num_ex,j,0]
+                   self.new_data[num_ex,j,4] = self.data[num_ex,j+1,1] - self.data[num_ex,j,1]
+                   self.new_data[num_ex,j,5] = self.data[num_ex,j+1,2] - self.data[num_ex,j,2]
+        print("Input data size: ")     
         print(self.data.shape)
 
 
