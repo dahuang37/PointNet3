@@ -12,42 +12,57 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
 import torchvision
 from torchvision import transforms, utils
-from models import LogisticRegression, LSTM, RNN_test, LSTM_mlp
+from models import Baseline, LSTM_mlp
 import utils
 import data
 
-def adjust_learning_rate(learning_rate, optimizer, epoch, saver):
+parser = argparse.ArgumentParser()
+parser.add_argument('--model', type=str, default='lstm', help='model to train')
+parser.add_argument('--learning_rate', type=float, default='0.01', help='learning rate')
+parser.add_argument('--batchSize', type=int, default=32, help='input batch size')
+parser.add_argument('--nepoch', type=int, default=100, help='number of epochs to train for')
+parser.add_argument('--sort', type=int, default = 0,  help='sort input, 0 not sorted, 1 sorted')
+parser.add_argument('--distance', type=int, default = 0,  help='expand dim to include distance between points')
+parser.add_argument('--num_points', type=int, default=2048, help='input batch size')
+parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
+parser.add_argument('--outf', type=str, default='testing_',  help='output folder')
+parser.add_argument('--path', type=str, default = '',  help='model path')
+parser.add_argument('--debug', type=int, default = 0,  help='debug mode, not creating saved path')
+parser.add_argument('--random_input', type=int, default = 0,  help='if 1, input will be randomized for training')
+parser.add_argument('--clip', type=float, default=4, help='clip for gradient')
+parser.add_argument('--early_stopping', type=int, default=0, help='1 then will early stop')
+parser.add_argument('--transform', type=int, default = 1, help='if 1, input will be transformed')
+parser.add_argument('--elem_max', type=int, default = 0, help='if 1, we max out lstm output')
+parser.add_argument('--normal', type=int, default = 1, help='if 1, we include the normal channels')
+
+
+opt = parser.parse_args()
+
+def adjust_learning_rate(optimizer, epoch, saver):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = learning_rate * (0.1 ** (epoch // 25))
+    lr = opt.learning_rate * (0.1 ** (epoch // 25))
     saver.log_string("learning rate: %f" % (lr))
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-def parse_arguement():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default='lstm', help='model to train')
-    parser.add_argument('--learning_rate', type=float, default='0.01', help='learning rate')
-    parser.add_argument('--batchSize', type=int, default=32, help='input batch size')
-    parser.add_argument('--nepoch', type=int, default=100, help='number of epochs to train for')
-    parser.add_argument('--sort', type=int, default = 0,  help='sort input, 0 not sorted, 1 sorted')
-    parser.add_argument('--distance', type=int, default = 0,  help='expand dim to include distance between points')
-    parser.add_argument('--num_points', type=int, default=2048, help='input batch size')
-    parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
-    parser.add_argument('--outf', type=str, default='testing_',  help='output folder')
-    parser.add_argument('--path', type=str, default = '',  help='model path')
-    parser.add_argument('--debug', type=int, default = 0,  help='debug mode, not creating saved path')
-    parser.add_argument('--random_input', type=int, default = 0,  help='if 1, input will be randomized for training')
-    parser.add_argument('--clip', type=float, default=4, help='clip for gradient')
-    parser.add_argument('--early_stopping', type=int, default=0, help='1 then will early stop')
-    parser.add_argument('--transform', type=int, default = 1, help='if 1, input will be transformed')
-    parser.add_argument('--elem_max', type=int, default = 0, help='if 1, we max out lstm output')
 
-    opt = parser.parse_args()
+def augment_batch_data(batch_data):
+    # if opt.normal:
+    #     rotated_data = utils.rotate_point_cloud_with_normal(batch_data)
+    #     # rotated_data = utils.rotate_perturbation_point_cloud_with_normal(rotated_data)
+    # else:
+    #     rotated_data = utils.rotate_point_cloud(batch_data)
+    #     # rotated_data = utils.rotate_perturbation_point_cloud(rotated_data)
 
-    return opt
+    # # jittered_data = utils.random_scale_point_cloud(rotated_data[:,:,0:3])
+    # # jittered_data = utils.shift_point_cloud(jittered_data)
+    # jittered_data = utils.jitter_point_cloud(rotated_data)
+    # rotated_data[:,:,0:3] = jittered_data
+    rotated_data = utils.pca_rotation(batch_data)
+    return rotated_data
 
-def train(model, optimizer, criterion, saver, train_loader, epoch, opt):
+def train(model, optimizer, criterion, saver, train_loader, epoch):
     correct = 0.0
     train_loss = 0.0
     train_total = 0
@@ -55,13 +70,12 @@ def train(model, optimizer, criterion, saver, train_loader, epoch, opt):
     for batch_idx, (data, target) in enumerate(train_loader):
         # get mini-batch data
         if opt.transform:
-            data = torch.from_numpy(utils.rotate_point_cloud(data.numpy()))
-            # data = torch.from_numpy(jitter_point_cloud(data.numpy()))
-            
+            data = torch.from_numpy(augment_batch_data(data.numpy()))
+
         if torch.cuda.is_available():
             data, target = data.cuda(), target.long().cuda()
 
-        data, target = Variable(data), Variable(target[:,0])
+        data, target = Variable(data), Variable(target[:])
 
         # transform the whole batch
         target = target.long()
@@ -113,7 +127,7 @@ def test(model, criterion, saver, test_loader, epoch):
     for (data, target) in test_loader:
         # get mini-batch data
         data, target = data.cuda(), target.long().cuda()
-        data, target = Variable(data), Variable(target[:,0])
+        data, target = Variable(data), Variable(target)
         target = target.long()
 
         # feedforward
@@ -148,8 +162,6 @@ def test(model, criterion, saver, test_loader, epoch):
     return test_loss
     
 def main():
-    opt = parse_arguement()
-
     saver = utils.Saver(opt)
 
     # randomize seed
@@ -159,7 +171,7 @@ def main():
     torch.cuda.manual_seed_all(opt.manualSeed)
 
     # load data
-    root = "data/modelnet40_ply_hdf5_2048/"
+    root = "data/modelnet40_normal_resampled"#"data/modelnet40_ply_hdf5_2048/"
     use_cuda = torch.cuda.is_available()
 
     transforms_list = []
@@ -173,7 +185,8 @@ def main():
                             train=True,
                             sort=opt.sort,
                             transform=transforms.Compose(transforms_list),
-                            distance=opt.distance)
+                            distance=opt.distance,
+                            normal=opt.normal)
     train_loader = DataLoader(train_dataset,
                             batch_size=opt.batchSize,
                             shuffle=True,
@@ -182,22 +195,23 @@ def main():
     test_dataset = data.ModelNetDataset(root,
                             train=False,
                             sort=opt.sort,
-                            distance=opt.distance)
+                            distance=opt.distance,
+                            normal=opt.normal)
     test_loader = DataLoader(test_dataset,
                             batch_size=opt.batchSize,
                             shuffle=False,
                             num_workers=opt.workers)
 
     # define model
-    ndim = 6 if opt.distance else 3
+    ndim = 6 if opt.distance or opt.normal else 3
     if opt.model == 'lstm':
-        model = LSTM(input_dim=ndim, maxout=opt.elem_max)
+        model = Baseline(input_dim=ndim, maxout=opt.elem_max)
     elif opt.model == 'lstm_mlp':
         model = LSTM_mlp(input_dim=ndim, maxout=opt.elem_max)
-    elif opt.model == 'test':
-        model = RNN_test()
-    elif opt.model == "logit":
-        model = LogisticRegression(2048*3, 40)
+    # elif opt.model == 'test':
+    #     model = RNN_test()
+    # elif opt.model == "logit":
+    #     model = LogisticRegression(2048*3, 40)
 
     # load speicified pre-trained model
     if opt.path != '':
@@ -209,7 +223,7 @@ def main():
 
     # transfer model and criterion to cuda if exist
     if use_cuda:
-        model = model.cuda()#nn.DataParallel(model).cuda()
+        model = model.cuda() #nn.DataParallel(model).cuda()
         criterion = criterion.cuda()
 
     best_model_wts = model.state_dict()
@@ -219,9 +233,9 @@ def main():
     saver.log_parameters(model.parameters())
 
     for epoch in range(opt.nepoch):
-        adjust_learning_rate(opt.learning_rate, optimizer, epoch, saver)
+        adjust_learning_rate(optimizer, epoch, saver)
 
-        train(model, optimizer, criterion, saver, train_loader, epoch, opt)
+        train(model, optimizer, criterion, saver, train_loader, epoch)
 
         test_loss = test(model, criterion, saver, test_loader, epoch)
 

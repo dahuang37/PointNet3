@@ -80,44 +80,22 @@ class LSTM(nn.Module):
         self.input_dim = input_dim
         self.conv1 = torch.nn.Conv1d(self.input_dim, 64, 1)
         self.bn1 = nn.BatchNorm1d(64)
-        # self.conv2 = torch.nn.Conv1d(64, 128, 1)
-        # self.bn2 = nn.BatchNorm1d(128)
-        # self.conv3 = torch.nn.Conv1d(128, 256, 1)
-        # self.bn3 = nn.BatchNorm1d(256)
-        # self.conv4 = torch.nn.Conv1d(256, 512, 1)
-        # self.bn4 = nn.BatchNorm1d(512)
-        # self.conv5 = torch.nn.Conv1d(512, 1024, 1)
-        # self.bn5 = nn.BatchNorm1d(1024)
-
         self.rnn = nn.LSTM(input_size=64, hidden_size=128, num_layers=2, batch_first=True)
-        
-        # self.fc1 = nn.Linear(1024, 512)
-        # self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(128, 40)
-        # self.bn6 = nn.BatchNorm2d(512)
-        # self.bn7 = nn.BatchNorm2d(256)
-
-
+ 
     def forward(self, x):
         x = x.transpose(2,1)
         x = F.relu(self.bn1(self.conv1(x)))
-        # x = F.relu(self.bn2(self.conv2(x)))
-        # x = F.relu(self.bn3(self.conv3(x)))
-        # x = F.relu(self.bn4(self.conv4(x)))
-        # x = F.relu(self.bn5(self.conv5(x)))
+       
         x = x.transpose(2,1)
-        self.rnn.flatten_parameters()
         r_out, (h_n, h_c) = self.rnn(x, None)
         
         if self.maxout == 1:
             x = torch.max(r_out, 1)[0]
         else:
             x = r_out[:,-1,:]
-        # x = F.relu(self.bn6(self.fc1(x)))
-        # x = F.relu(self.bn7(self.fc2(x)))
-        
+    
         out = self.fc3(x)
-
         return out
 
 class LSTM_mlp(nn.Module):
@@ -149,7 +127,7 @@ class LSTM_mlp(nn.Module):
         x = self.mlp.forward(x)
         x = x.transpose(2,1)
 
-        self.rnn.flatten_parameters()
+        # self.rnn.flatten_parameters()
         r_out, (h_n, h_c) = self.rnn(x, None)
         
         if self.maxout == 1:

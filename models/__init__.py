@@ -1,1 +1,2 @@
-from .models import LSTM, LogisticRegression, RNN_test, LSTM_mlp
+from .classification_baseline import Baseline
+from .classification_models import LSTM_mlp

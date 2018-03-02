@@ -16,7 +16,8 @@ from utils import *
 
 
 class ModelNetDataset(Dataset):
-    def __init__(self, root, train=True, transform=None, npoints=2048, mesh=False, sort=True, distance=False, test_transform=False):
+    def __init__(self, root, train=True, transform=None, npoints=2048, mesh=False, sort=True, distance=False, \
+                h5py=False, normal=True, normalize=True):
         """
         Args:
             root (string): Directory of data, default = data/modelnet40_ply_hdf5_2048
@@ -36,12 +37,19 @@ class ModelNetDataset(Dataset):
         self.sort = sort
         self.distance = distance
         self.mesh = mesh
+        self.h5py = h5py
+        self.normal = normal
+        self.normalize = normalize
+        self.split = "train" if train else "test"
 
         if self.mesh:
             self.load_mesh_file()
 
-        self.load_data_from_h5()
-                
+        if self.h5py:
+            self.load_data_from_h5()
+        else:
+            self.load_data_from_txt()
+            
         self.transform = transform
         
         if self.sort:
@@ -53,28 +61,54 @@ class ModelNetDataset(Dataset):
             print(self.new_data.shape)
         else:
             print("Input data size: ")     
-            print(self.data.shape)
+            print(len(self.data))
 
 
     def __getitem__(self, index):
-        data = self.data[index]
-        labels = self.labels[index]
+        if self.h5py:
+            data = self.data[index]
+            labels = self.labels[index]
 
-        # if distance, don't transform / augment data, distance would not match
-        if self.distance:
-            return self.new_data[index], labels
+            # if distance, don't transform / augment data, distance would not match
+            if self.distance:
+                return self.new_data[index], labels
 
-        if self.transform is not None:
-            data = self.transform(data)
+            if self.transform is not None:
+                data = self.transform(data)
 
-        if self.mesh:
-            mesh_paths = self.mesh_paths[index]
-            return data, labels, mesh_paths
+            if self.mesh:
+                mesh_paths = self.mesh_paths[index]
+                return data, labels, mesh_paths
 
-        return data, labels
+            return data, labels
+        else:
+            fn = self.data[index]
+            label = self.classes[fn[0]]
+            point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
+            point_set = point_set[0:self.npoints, :]
+
+            if self.normalize:
+                point_set[:,0:3] = self.pc_normalize(point_set[:,0:3])
+            if self.transform is not None:
+                point_set = self.transform(point_set)
+            if not self.normal:
+                point_set = point_set[:,0:3]
+            
+            return point_set, label
 
     def __len__(self):
-        return self.length
+        if self.h5py:
+            return self.length
+        else:
+            return len(self.data)
+
+    def pc_normalize(self, pc):
+        l = pc.shape[0]
+        centroid = np.mean(pc, axis=0)
+        pc = pc - centroid
+        m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
+        pc = pc / m
+        return pc
 
     def load_mesh_file(self, filename, train=True):
             """
@@ -102,6 +136,18 @@ class ModelNetDataset(Dataset):
             self.new_data[:,j,3] = self.data[:,j+1,0] - self.data[:,j,0]
             self.new_data[:,j,4] = self.data[:,j+1,1] - self.data[:,j,1]
             self.new_data[:,j,5] = self.data[:,j+1,2] - self.data[:,j,2]
+
+    def load_data_from_txt(self):
+        self.shape_names_file = os.path.join(self.root, 'modelnet40_shape_names.txt')
+        self.shape_names = [line.rstrip() for line in open(self.shape_names_file)]
+        self.classes = dict(zip(self.shape_names, range(len(self.shape_names))))
+        data_files = {}
+        data_files[self.split] = [line.rstrip() for line in open(os.path.join(self.root, 'modelnet40_'+self.split+'.txt'))]
+        
+        data_shape_names = ['_'.join(x.split('_')[0:-1]) for x in data_files[self.split]]
+        
+        self.data = [(data_shape_names[i], os.path.join(self.root, data_shape_names[i], data_files[self.split][i]+'.txt'))\
+                  for i in range(len(data_files[self.split]))]
 
     def load_data_from_h5(self):
         train_txt = os.path.join(self.root, "train_files.txt")
