@@ -13,11 +13,13 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision
 from torchvision import transforms, utils
 from utils import *
+from sklearn.decomposition import PCA
+
 
 
 class ModelNetDataset(Dataset):
     def __init__(self, root, train=True, transform=None, npoints=2048, mesh=False, sort=True, distance=False, \
-                h5py=False, normal=True, normalize=True):
+                h5py=False, normal=True, normalize=False):
         """
         Args:
             root (string): Directory of data, default = data/modelnet40_ply_hdf5_2048
@@ -30,10 +32,10 @@ class ModelNetDataset(Dataset):
             ###label_names (n,1): str ndarray label names
             ###mesh_paths (str): director of its corresponding mesh
         """
+        # self.data_format = data_format # ["sort", "delta"]
         self.root = root
         self.train = train
         self.npoints = npoints
-        self.train = train
         self.sort = sort
         self.distance = distance
         self.mesh = mesh
@@ -42,6 +44,8 @@ class ModelNetDataset(Dataset):
         self.normalize = normalize
         self.split = "train" if train else "test"
 
+        self.cache = {}
+        self.cache_size = 10000
         if self.mesh:
             self.load_mesh_file()
 
@@ -49,18 +53,18 @@ class ModelNetDataset(Dataset):
             self.load_data_from_h5()
         else:
             self.load_data_from_txt()
-            
+
         self.transform = transform
-        
+
         if self.sort:
             self.sort_input()
 
         if self.distance:
             self.add_delta_input()
-            print("Input data size: ")     
+            print("Input data size: ")
             print(self.new_data.shape)
         else:
-            print("Input data size: ")     
+            print("Input data size: ")
             print(len(self.data))
 
 
@@ -74,6 +78,7 @@ class ModelNetDataset(Dataset):
                 return self.new_data[index], labels
 
             if self.transform is not None:
+                # print("transform")
                 data = self.transform(data)
 
             if self.mesh:
@@ -82,18 +87,26 @@ class ModelNetDataset(Dataset):
 
             return data, labels
         else:
-            fn = self.data[index]
-            label = self.classes[fn[0]]
-            point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
-            point_set = point_set[0:self.npoints, :]
+            if index in self.cache:
+                point_set, label = self.cache[index]
+            else:
+                fn = self.data[index]
+                label = self.classes[fn[0]]
+                point_set = np.loadtxt(fn[1], delimiter=',').astype(np.float32)
+                point_set = point_set[0:self.npoints, :]
 
-            if self.normalize:
-                point_set[:,0:3] = self.pc_normalize(point_set[:,0:3])
-            if self.transform is not None:
-                point_set = self.transform(point_set)
-            if not self.normal:
-                point_set = point_set[:,0:3]
-            
+
+                if self.normalize:
+                    point_set[:,0:3] = self.pc_normalize(point_set[:,0:3])
+                if self.transform is not None:
+                    point_set = self.transform(point_set)
+                if not self.normal:
+                    point_set = point_set[:,0:3]
+
+                if len(self.cache) < self.cache_size:
+                    self.cache[index] = (point_set, label)
+
+        
             return point_set, label
 
     def __len__(self):
@@ -138,18 +151,22 @@ class ModelNetDataset(Dataset):
             self.new_data[:,j,5] = self.data[:,j+1,2] - self.data[:,j,2]
 
     def load_data_from_txt(self):
+        self.root = "data/modelnet40_normal_resampled"
         self.shape_names_file = os.path.join(self.root, 'modelnet40_shape_names.txt')
         self.shape_names = [line.rstrip() for line in open(self.shape_names_file)]
         self.classes = dict(zip(self.shape_names, range(len(self.shape_names))))
         data_files = {}
         data_files[self.split] = [line.rstrip() for line in open(os.path.join(self.root, 'modelnet40_'+self.split+'.txt'))]
-        
+
         data_shape_names = ['_'.join(x.split('_')[0:-1]) for x in data_files[self.split]]
-        
+
+
         self.data = [(data_shape_names[i], os.path.join(self.root, data_shape_names[i], data_files[self.split][i]+'.txt'))\
                   for i in range(len(data_files[self.split]))]
 
+
     def load_data_from_h5(self):
+        self.root = "data/modelnet40_ply_hdf5_2048/"
         train_txt = os.path.join(self.root, "train_files.txt")
         test_txt = os.path.join(self.root, "test_files.txt")
         label_names_txt = os.path.join(self.root, "shape_names.txt")
@@ -161,11 +178,11 @@ class ModelNetDataset(Dataset):
             h5_list = [line.rstrip() for line in open(test_txt)]
 
         h5_file = h5py.File(h5_list[0])
-        
+
         self.data = h5_file['data'][:,0:self.npoints,:]
         self.labels = h5_file['label']
         self.length = len(self.data)
-        
+
         for i in range(1, len(h5_list)):
             h5_file = h5py.File(h5_list[i])
             datum = h5_file['data'][:,0:self.npoints,:]

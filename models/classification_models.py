@@ -26,16 +26,20 @@ class LSTM_mlp(nn.Module):
         self.rnn = nn.LSTM(input_size=mlp[-1], hidden_size=fc[0], num_layers=2, batch_first=True)
         
         self.fc = torch.nn.Sequential()
-        for i in range(len(fc)-1):
-            self.fc.add_module("fc_"+str(i+2), nn.Linear(fc[i], fc[i+1]))
+        for i in range(len(fc)-2):
+            self.fc.add_module("fc_"+str(i+1), nn.Linear(fc[i], fc[i+1]))
+            self.fc.add_module("bn_"+str(i+1), nn.BatchNorm1d(fc[i+1]))
+        self.fc.add_module("fc_"+str(len(fc)-1), nn.Linear(fc[-2], fc[-1]))
 
     def forward(self, x):
-
+        print(self.mlp)
+        print(self.fc)
+        print(self.rnn)
         x = x.transpose(2,1)
         x = self.mlp.forward(x)
         x = x.transpose(2,1)
 
-        # self.rnn.flatten_parameters()
+        self.rnn.flatten_parameters()
         r_out, (h_n, h_c) = self.rnn(x, None)
         
         if self.maxout == 1:

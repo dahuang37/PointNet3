@@ -12,9 +12,12 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
 import torchvision
 from torchvision import transforms, utils
-from models import Baseline, LSTM_mlp
+from models import Baseline, LSTM_mlp, Test
 import utils
 import data
+import backup as backup_data
+from sklearn.decomposition import PCA
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, default='lstm', help='model to train')
@@ -34,13 +37,13 @@ parser.add_argument('--early_stopping', type=int, default=0, help='1 then will e
 parser.add_argument('--transform', type=int, default = 1, help='if 1, input will be transformed')
 parser.add_argument('--elem_max', type=int, default = 0, help='if 1, we max out lstm output')
 parser.add_argument('--normal', type=int, default = 1, help='if 1, we include the normal channels')
-
+parser.add_argument('--h5py', type=int, default = 0, help='if 1, we use the h5py dataset')
 
 opt = parser.parse_args()
 
 def adjust_learning_rate(optimizer, epoch, saver):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = opt.learning_rate * (0.1 ** (epoch // 25))
+    lr = opt.learning_rate * (0.1 ** (epoch // 40))
     saver.log_string("learning rate: %f" % (lr))
 
     for param_group in optimizer.param_groups:
@@ -48,17 +51,25 @@ def adjust_learning_rate(optimizer, epoch, saver):
 
 
 def augment_batch_data(batch_data):
-    # if opt.normal:
-    #     rotated_data = utils.rotate_point_cloud_with_normal(batch_data)
-    #     # rotated_data = utils.rotate_perturbation_point_cloud_with_normal(rotated_data)
-    # else:
-    #     rotated_data = utils.rotate_point_cloud(batch_data)
-    #     # rotated_data = utils.rotate_perturbation_point_cloud(rotated_data)
 
-    # # jittered_data = utils.random_scale_point_cloud(rotated_data[:,:,0:3])
-    # # jittered_data = utils.shift_point_cloud(jittered_data)
-    # jittered_data = utils.jitter_point_cloud(rotated_data)
-    # rotated_data[:,:,0:3] = jittered_data
+    if opt.normal:
+       rotated_data = utils.rotate_point_cloud_with_normal(batch_data)
+       rotated_data = utils.rotate_perturbation_point_cloud_with_normal(rotated_data)
+    else:
+       rotated_data = utils.rotate_point_cloud(batch_data)
+       rotated_data = utils.rotate_perturbation_point_cloud(rotated_data)
+
+    #return_data = np.copy(batch_data)
+    jittered_data = utils.random_scale_point_cloud(batch_data[:,:,0:3])
+    jittered_data = utils.shift_point_cloud(jittered_data)
+    jittered_data = utils.jitter_point_cloud(jittered_data)
+    rotated_data[:,:,0:3] = jittered_data
+
+    return rotated_data
+
+def test_model_transform_variance(batch_data):
+    # new_data = np.zeros(batch_data.shape, dtype=batch_data.dtype)
+
     rotated_data = utils.pca_rotation(batch_data)
     return rotated_data
 
@@ -71,6 +82,7 @@ def train(model, optimizer, criterion, saver, train_loader, epoch):
         # get mini-batch data
         if opt.transform:
             data = torch.from_numpy(augment_batch_data(data.numpy()))
+        # data = torch.from_numpy(test_model_transform_variance(data.numpy()))
 
         if torch.cuda.is_available():
             data, target = data.cuda(), target.long().cuda()
@@ -85,7 +97,7 @@ def train(model, optimizer, criterion, saver, train_loader, epoch):
 
         # feedforward
         output = model(data)
-
+        # print(output.shape)
         # compute loss
         loss = criterion(output, target)
 
@@ -93,9 +105,9 @@ def train(model, optimizer, criterion, saver, train_loader, epoch):
         loss.backward()
 
         # gradient clipping
-        torch.nn.utils.clip_grad_norm(model.parameters(), opt.clip)
-        for p in model.parameters():
-            p.data.add_(-opt.learning_rate, p.grad.data)
+        # torch.nn.utils.clip_grad_norm(model.parameters(), opt.clip)
+        # for p in model.parameters():
+        #     p.data.add_(-opt.learning_rate, p.grad.data)
 
         # optimize / backprop
         optimizer.step()
@@ -125,9 +137,8 @@ def test(model, criterion, saver, test_loader, epoch):
     model.eval()
 
     for (data, target) in test_loader:
-        # get mini-batch data
         data, target = data.cuda(), target.long().cuda()
-        data, target = Variable(data), Variable(target)
+        data, target = Variable(data), Variable(target[:])
         target = target.long()
 
         # feedforward
@@ -160,7 +171,7 @@ def test(model, criterion, saver, test_loader, epoch):
     saver.update_training_info(False, test_loss, epoch_acc, avg_class_acc, model.state_dict(), epoch*len(test_loader.dataset))
 
     return test_loss
-    
+
 def main():
     saver = utils.Saver(opt)
 
@@ -171,15 +182,16 @@ def main():
     torch.cuda.manual_seed_all(opt.manualSeed)
 
     # load data
-    root = "data/modelnet40_normal_resampled"#"data/modelnet40_ply_hdf5_2048/"
+    root = "data/modelnet40_ply_hdf5_2048/"#"data/modelnet40_normal_resampled"#
     use_cuda = torch.cuda.is_available()
 
     transforms_list = []
     random_permute = utils.Random_permute(opt.num_points, delta=opt.distance)
     # load transformations
     if opt.random_input:
+        print("random_input")
         transforms_list.append(random_permute)
-        
+
     # Load dataset / data loader
     train_dataset = data.ModelNetDataset(root,
                             train=True,
@@ -207,11 +219,9 @@ def main():
     if opt.model == 'lstm':
         model = Baseline(input_dim=ndim, maxout=opt.elem_max)
     elif opt.model == 'lstm_mlp':
-        model = LSTM_mlp(input_dim=ndim, maxout=opt.elem_max)
-    # elif opt.model == 'test':
-    #     model = RNN_test()
-    # elif opt.model == "logit":
-    #     model = LogisticRegression(2048*3, 40)
+        model = LSTM_mlp(input_dim=ndim, maxout=opt.elem_max, mlp=[64,128,256,512], fc=[512,256,40])
+    elif opt.model == 'test':
+        model = Test(input_dim=ndim, maxout=opt.elem_max)
 
     # load speicified pre-trained model
     if opt.path != '':
@@ -223,7 +233,7 @@ def main():
 
     # transfer model and criterion to cuda if exist
     if use_cuda:
-        model = model.cuda() #nn.DataParallel(model).cuda()
+        model = model.cuda() #nn.DataParallel(model).cuda()#model.cuda() #nn.DataParallel(model).cuda()
         criterion = criterion.cuda()
 
     best_model_wts = model.state_dict()

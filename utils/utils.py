@@ -256,7 +256,9 @@ def pca_rotation(batch_data):
     for i in range(len(batch_data)):
         pca.fit(batch_data[i][:,0:3])
         new_pt = np.copy(batch_data[i])
-        new_pt[:, 0:3] = pca.transform(batch_data[i][:,0:3])
+        new_pt[:, 0:3] = np.dot(batch_data[i][:,0:3], pca.components_.T)
+        if new_pt.shape == 6:
+            new_pt[:, 3:6] = np.dot(batch_data[i][:, 3:6], pca.components_.T)
         rotated_data[i] = new_pt
 
     return rotated_data
