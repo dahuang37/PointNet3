@@ -213,7 +213,7 @@ class Histogram2dFunction(torch.autograd.Function):
     bins: 10 by defaulted
     """
     @staticmethod
-    def forward(ctx, input, weight, bins=10):
+    def forward(ctx, input, weight, bins=128):
         histograms, histograms_indexes = histogram2d_vectorize(input, bins=bins)
 
         histograms = histograms.cuda()
@@ -287,7 +287,7 @@ class Histogram2d(nn.Module):
         self.weights = nn.Parameter(torch.Tensor(bins, feature_size).cuda())
 
         # Not a very smart way to initialize weights
-        self.weights.data.uniform_(0, 1)
+        self.weights.data.fill_(1)
 
 
     def forward(self, input):
@@ -300,7 +300,7 @@ class Histogram2d(nn.Module):
         return 'bins={}'.format(self.bins)
 
 class Test(nn.Module):
-    def __init__(self, input_dim, maxout, bins=10):
+    def __init__(self, input_dim, maxout, bins=512):
         super(Test, self).__init__()
         self.maxout = maxout
         self.input_dim = input_dim
@@ -308,15 +308,15 @@ class Test(nn.Module):
 
         self.conv2 = torch.nn.Conv1d(64, 128, 1)
 
-        self.conv3 = torch.nn.Conv1d(128, 256, 1)
+        # self.conv3 = torch.nn.Conv1d(128, 256, 1)
 
         self.bn1 = nn.BatchNorm1d(64)
         self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(256)
+        # self.bn3 = nn.BatchNorm1d(256)
 
-        self.his = Histogram2d(256, bins=bins)
+        self.his = Histogram2d(128, bins=bins)
 
-        self.fc1 = nn.Linear(bins*256, 256)
+        self.fc1 = nn.Linear(bins*128, 256)
         self.fc2 = nn.Linear(256, 40)
         self.bn5 = nn.BatchNorm1d(256)
 
@@ -324,8 +324,8 @@ class Test(nn.Module):
     def forward(self, x):
         x = x.transpose(2,1)
         x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = self.bn3(self.conv3(x))
+        x = self.bn2(self.conv2(x))
+        # x = self.bn3(self.conv3(x))
 
         x = x.transpose(2,1)
         x = rangeNormalize(x)
